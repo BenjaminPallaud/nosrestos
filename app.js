@@ -7,15 +7,13 @@ let placesService;
 let autocompleteService;
 let markers = [];
 let restaurants = [];
+let couplePhoto = null;
 let searchTimeout;
 let pendingPhotos = [];
 
-const STORAGE_KEY = 'nos-restos-data';
-const COUPLE_PHOTO_KEY = 'nos-restos-couple-photo';
-
 // ─── Init ───
 
-function initMap() {
+async function initMap() {
     // Default center: Paris
     const center = { lat: 48.8566, lng: 2.3522 };
 
@@ -33,7 +31,7 @@ function initMap() {
     placesService = new google.maps.places.PlacesService(map);
     autocompleteService = new google.maps.places.AutocompleteService();
 
-    loadRestaurants();
+    await loadData();
     setupSearch();
     setupModals();
     setupCouplePhoto();
@@ -89,10 +87,9 @@ function setupCouplePhoto() {
     const img = document.getElementById('couple-photo');
     const placeholder = document.getElementById('couple-placeholder');
 
-    // Load saved photo
-    const savedPhoto = localStorage.getItem(COUPLE_PHOTO_KEY);
-    if (savedPhoto) {
-        img.src = savedPhoto;
+    // Load saved photo from memory (already loaded via loadData)
+    if (couplePhoto) {
+        img.src = couplePhoto;
         img.classList.remove('hidden');
         placeholder.classList.add('hidden');
     }
@@ -110,7 +107,8 @@ function setupCouplePhoto() {
                 img.src = resized;
                 img.classList.remove('hidden');
                 placeholder.classList.add('hidden');
-                localStorage.setItem(COUPLE_PHOTO_KEY, resized);
+                couplePhoto = resized;
+                saveCouplePhoto(resized);
             });
         };
         reader.readAsDataURL(file);
@@ -271,6 +269,13 @@ function showAddModal(place) {
                 </div>
 
                 <div class="add-form-group">
+                    <label>Notre note</label>
+                    <div class="star-rating" id="add-star-rating">
+                        ${[1,2,3,4,5].map(i => `<span class="star" data-value="${i}">☆</span>`).join('')}
+                    </div>
+                </div>
+
+                <div class="add-form-group">
                     <label>Notre commentaire</label>
                     <textarea id="add-comment" placeholder="Un moment inoubliable..."></textarea>
                 </div>
@@ -308,6 +313,9 @@ function showAddModal(place) {
         website: place.website || '',
         hours: place.opening_hours ? place.opening_hours.weekday_text : [],
     });
+
+    // Star rating
+    setupStarRating('add-star-rating');
 
     // Photo upload
     const uploadArea = document.getElementById('photo-upload-area');
@@ -363,18 +371,20 @@ function saveNewRestaurant(modal) {
     const placeData = JSON.parse(modal.dataset.place);
     const comment = document.getElementById('add-comment').value.trim();
     const date = document.getElementById('add-date').value;
+    const ourRating = parseInt(document.getElementById('add-star-rating').dataset.value || '0');
 
     const restaurant = {
         id: Date.now().toString(),
         ...placeData,
         comment: comment,
         date: date,
+        ourRating: ourRating,
         userPhotos: [...pendingPhotos],
         addedAt: new Date().toISOString(),
     };
 
     restaurants.push(restaurant);
-    saveRestaurants();
+    saveRestaurant(restaurant);
     renderRestaurants();
     updateMapMarkers();
     fitMapToMarkers();
@@ -425,7 +435,12 @@ function showDetailModal(restaurantId) {
             <hr class="detail-separator">
 
             <div class="detail-comment-section">
-                <h3>Notre avis</h3>
+                <h3>Notre note</h3>
+                <div class="star-rating" id="detail-star-rating">
+                    ${[1,2,3,4,5].map(i => `<span class="star" data-value="${i}">☆</span>`).join('')}
+                </div>
+
+                <h3 style="margin-top: 18px;">Notre avis</h3>
                 ${r.comment
                     ? `<div class="detail-comment">${escapeHtml(r.comment)}</div>`
                     : `<p style="color: var(--text-light); font-style: italic;">Pas encore de commentaire</p>`
@@ -456,6 +471,14 @@ function showDetailModal(restaurantId) {
         </div>
     `;
 
+    // Star rating in detail
+    setupStarRating('detail-star-rating', r.ourRating || 0);
+    document.getElementById('detail-star-rating').addEventListener('click', () => {
+        r.ourRating = parseInt(document.getElementById('detail-star-rating').dataset.value || '0');
+        saveRestaurant(r);
+        renderRestaurants();
+    });
+
     // Detail photo upload
     document.getElementById('detail-photo-input').addEventListener('change', (e) => {
         Array.from(e.target.files).forEach(file => {
@@ -464,7 +487,7 @@ function showDetailModal(restaurantId) {
             reader.onload = (ev) => {
                 if (!r.userPhotos) r.userPhotos = [];
                 r.userPhotos.push(ev.target.result);
-                saveRestaurants();
+                saveRestaurant(r);
                 showDetailModal(r.id); // refresh
             };
             reader.readAsDataURL(file);
@@ -479,16 +502,16 @@ function updateComment(restaurantId) {
     if (!r) return;
     const textarea = document.getElementById('detail-comment-edit');
     r.comment = textarea.value.trim();
-    saveRestaurants();
+    saveRestaurant(r);
     renderRestaurants();
-    showDetailModal(restaurantId); // refresh
+    showDetailModal(restaurantId);
 }
 
 function removePhoto(restaurantId, photoIndex) {
     const r = restaurants.find(r => r.id === restaurantId);
     if (!r || !r.userPhotos) return;
     r.userPhotos.splice(photoIndex, 1);
-    saveRestaurants();
+    saveRestaurant(r);
     showDetailModal(restaurantId);
     renderRestaurants();
 }
@@ -505,7 +528,7 @@ function deleteRestaurant(id, e) {
     e.stopPropagation();
     if (!confirm('Retirer ce restaurant de notre liste ?')) return;
     restaurants = restaurants.filter(r => r.id !== id);
-    saveRestaurants();
+    deleteRestaurantFromDb(id);
     renderRestaurants();
     updateMapMarkers();
     fitMapToMarkers();
@@ -581,6 +604,7 @@ function renderRestaurants() {
                     <div class="card-name">${r.name}</div>
                     ${r.cuisine ? `<div class="card-cuisine">${r.cuisine}</div>` : ''}
                     <div class="card-address">${r.address || ''}</div>
+                    ${r.ourRating ? `<div class="card-our-rating">${renderStarsReadonly(r.ourRating)} <span>Notre note</span></div>` : ''}
                     ${dateFormatted ? `<div class="card-date">♥ ${dateFormatted}</div>` : ''}
                     ${r.comment ? `<div class="card-comment-preview">"${escapeHtml(r.comment)}"</div>` : ''}
                     ${photoCount > 0 ? `<div class="card-photos-count">📸 ${photoCount} photo${photoCount > 1 ? 's' : ''}</div>` : ''}
@@ -654,19 +678,91 @@ function fitMapToMarkers() {
     map.fitBounds(bounds, { padding: 60 });
 }
 
-// ─── Storage ───
+// ─── Storage (Firebase Firestore) ───
 
-function loadRestaurants() {
+async function loadData() {
     try {
-        const data = localStorage.getItem(STORAGE_KEY);
-        restaurants = data ? JSON.parse(data) : [];
-    } catch {
+        // Load restaurants
+        const snapshot = await db.collection('restaurants').orderBy('date', 'desc').get();
+        restaurants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Load couple photo
+        const settingsDoc = await db.collection('settings').doc('couple').get();
+        if (settingsDoc.exists) {
+            couplePhoto = settingsDoc.data().photo || null;
+        }
+    } catch (err) {
+        console.error('Erreur chargement:', err);
         restaurants = [];
+        couplePhoto = null;
+    }
+}
+
+async function saveRestaurant(restaurant) {
+    try {
+        const { id, ...data } = restaurant;
+        await db.collection('restaurants').doc(id).set(data);
+    } catch (err) {
+        console.error('Erreur sauvegarde restaurant:', err);
+    }
+}
+
+async function deleteRestaurantFromDb(id) {
+    try {
+        await db.collection('restaurants').doc(id).delete();
+    } catch (err) {
+        console.error('Erreur suppression:', err);
+    }
+}
+
+async function saveCouplePhoto(photoData) {
+    try {
+        await db.collection('settings').doc('couple').set({ photo: photoData });
+    } catch (err) {
+        console.error('Erreur sauvegarde photo:', err);
     }
 }
 
 function saveRestaurants() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(restaurants));
+    // Batch save all (used for comment/photo updates)
+    restaurants.forEach(r => saveRestaurant(r));
+}
+
+// ─── Star Rating ───
+
+function setupStarRating(containerId, initialValue) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const stars = container.querySelectorAll('.star');
+    const val = initialValue || 0;
+    container.dataset.value = val;
+    updateStars(stars, val);
+
+    stars.forEach(star => {
+        star.addEventListener('mouseenter', () => {
+            updateStars(stars, parseInt(star.dataset.value));
+        });
+        star.addEventListener('mouseleave', () => {
+            updateStars(stars, parseInt(container.dataset.value || '0'));
+        });
+        star.addEventListener('click', () => {
+            container.dataset.value = star.dataset.value;
+            updateStars(stars, parseInt(star.dataset.value));
+        });
+    });
+}
+
+function updateStars(stars, value) {
+    stars.forEach(star => {
+        const v = parseInt(star.dataset.value);
+        star.textContent = v <= value ? '★' : '☆';
+        star.classList.toggle('active', v <= value);
+    });
+}
+
+function renderStarsReadonly(value) {
+    if (!value) return '';
+    return '★'.repeat(value) + '☆'.repeat(5 - value);
 }
 
 // ─── Helpers ───

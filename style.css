@@ -1123,6 +1123,44 @@ body::before {
     margin-top: 10px;
 }
 
+/* ─── STAR RATING ─── */
+
+.star-rating {
+    display: flex;
+    gap: 6px;
+}
+
+.star-rating .star {
+    font-size: 1.6rem;
+    color: var(--cream-dark);
+    cursor: pointer;
+    transition: color 0.15s ease, transform 0.15s ease;
+    user-select: none;
+}
+
+.star-rating .star:hover {
+    transform: scale(1.15);
+}
+
+.star-rating .star.active {
+    color: var(--gold);
+}
+
+.card-our-rating {
+    color: var(--gold);
+    font-size: 1rem;
+    margin-bottom: 4px;
+    letter-spacing: 2px;
+}
+
+.card-our-rating span {
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    color: var(--text-light);
+    font-style: italic;
+    margin-left: 4px;
+}
+
 /* ─── FOOTER ─── */
 
 .footer {
