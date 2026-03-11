@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nos Restos</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Lora:ital,wght@0,400;0,500;1,400&family=Italiana&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-ornament top-ornament">❦</div>
+        <div class="header-center">
+            <div class="couple-medallion" id="couple-medallion" title="Ajouter votre photo de couple">
+                <img id="couple-photo" src="" alt="Notre photo" class="hidden">
+                <div id="couple-placeholder" class="couple-placeholder">
+                    <span>♥</span>
+                    <small>Notre photo</small>
+                </div>
+                <input type="file" id="couple-photo-input" accept="image/*" style="display:none">
+            </div>
+            <div class="header-titles">
+                <h1 class="title">Nos Restos</h1>
+                <p class="subtitle">Les saveurs de notre histoire à deux</p>
+            </div>
+        </div>
+        <div class="header-ornament bottom-ornament">✦ ✦ ✦</div>
+    </header>
+
+    <!-- Search Section -->
+    <section class="search-section">
+        <div class="search-container">
+            <div class="search-icon">🔍</div>
+            <input type="text" id="search-input" placeholder="Rechercher un restaurant..." autocomplete="off">
+            <div id="search-results" class="search-results hidden"></div>
+        </div>
+    </section>
+
+    <!-- Map Section -->
+    <section class="map-section">
+        <div class="section-header">
+            <span class="ornament-left">─── ♥ ───</span>
+            <h2>Notre Carte Gourmande</h2>
+            <span class="ornament-right">─── ♥ ───</span>
+        </div>
+        <div id="map" class="map-container"></div>
+    </section>
+
+    <!-- Restaurants Grid -->
+    <section class="restaurants-section">
+        <div class="section-header">
+            <span class="ornament-left">─── ♥ ───</span>
+            <h2>Nos Adresses Préférées</h2>
+            <span class="ornament-right">─── ♥ ───</span>
+        </div>
+        <div id="restaurants-grid" class="restaurants-grid">
+            <div id="empty-state" class="empty-state">
+                <div class="empty-heart">♥</div>
+                <p>Aucun restaurant pour le moment</p>
+                <p class="empty-hint">Recherchez votre premier restaurant ci-dessus</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Restaurant Detail Modal -->
+    <div id="detail-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">✕</button>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Add Restaurant Modal (from Google Places) -->
+    <div id="add-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content add-modal-content">
+            <button class="modal-close" id="add-modal-close">✕</button>
+            <div id="add-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-heart">♥</div>
+        <p>Fait avec amour</p>
+    </footer>
+
+    <script>
+        const GOOGLE_MAPS_API_KEY = 'AIzaSyBvjJs7SoBgB4n3Bst7KNRCBMZBI7ZBIiI';
+    </script>
+    <script src="app.js"></script>
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBvjJs7SoBgB4n3Bst7KNRCBMZBI7ZBIiI&libraries=places&callback=initMap&language=fr">
+    </script>
+</body>
+</html>
