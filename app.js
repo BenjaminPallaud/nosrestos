@@ -210,7 +210,7 @@ function selectPlace(placeId) {
         fields: [
             'name', 'formatted_address', 'geometry', 'rating', 'user_ratings_total',
             'photos', 'types', 'formatted_phone_number', 'website',
-            'opening_hours', 'price_level', 'place_id', 'reviews'
+            'opening_hours', 'price_level', 'place_id', 'reviews', 'url'
         ]
     };
 
@@ -259,6 +259,7 @@ function showAddModal(place) {
                 <div class="add-preview-address">${place.formatted_address || ''}</div>
                 ${place.formatted_phone_number ? `<div class="add-preview-phone">📞 ${place.formatted_phone_number}</div>` : ''}
                 ${place.website ? `<a class="add-preview-website" href="${place.website}" target="_blank">Voir le site web</a><br>` : ''}
+                ${place.url ? `<a class="add-preview-website" href="${place.url}" target="_blank">Réserver</a><br>` : ''}
                 ${hoursHtml}
 
                 <hr class="add-separator">
@@ -270,9 +271,7 @@ function showAddModal(place) {
 
                 <div class="add-form-group">
                     <label>Notre note</label>
-                    <div class="star-rating" id="add-star-rating">
-                        ${[1,2,3,4,5].map(i => `<span class="star" data-value="${i}">☆</span>`).join('')}
-                    </div>
+                    ${renderStarRatingHtml('add-star-rating')}
                 </div>
 
                 <div class="add-form-group">
@@ -311,7 +310,14 @@ function showAddModal(place) {
         priceLevel: place.price_level,
         phone: place.formatted_phone_number || '',
         website: place.website || '',
+        reservationUrl: place.url || '',
         hours: place.opening_hours ? place.opening_hours.weekday_text : [],
+        reviews: (place.reviews || []).map(r => ({
+            author: r.author_name,
+            rating: r.rating,
+            text: r.text,
+            time: r.relative_time_description,
+        })),
     });
 
     // Star rating
@@ -337,6 +343,7 @@ function showAddModal(place) {
     });
 
     modal.classList.remove('hidden');
+    lockBody();
 }
 
 function handlePhotoFiles(files) {
@@ -371,7 +378,7 @@ function saveNewRestaurant(modal) {
     const placeData = JSON.parse(modal.dataset.place);
     const comment = document.getElementById('add-comment').value.trim();
     const date = document.getElementById('add-date').value;
-    const ourRating = parseInt(document.getElementById('add-star-rating').dataset.value || '0');
+    const ourRating = parseFloat(document.getElementById('add-star-rating').dataset.value || '0');
 
     const restaurant = {
         id: Date.now().toString(),
@@ -390,6 +397,7 @@ function saveNewRestaurant(modal) {
     fitMapToMarkers();
 
     modal.classList.add('hidden');
+    unlockBody();
     pendingPhotos = [];
 }
 
@@ -424,11 +432,29 @@ function showDetailModal(restaurantId) {
         ${r.photo ? `<img class="detail-header-image" src="${r.photo}" alt="${r.name}">` : ''}
         <div class="detail-body">
             <div class="detail-name">${r.name}</div>
-            ${ratingText ? `<div class="detail-rating">${ratingText}</div>` : ''}
+            ${ratingText ? `<div class="detail-rating-wrapper">
+                <span class="detail-rating ${r.reviews && r.reviews.length ? 'has-reviews' : ''}" id="detail-rating-trigger">${ratingText}</span>
+                ${r.reviews && r.reviews.length ? `
+                    <div class="reviews-popup" id="reviews-popup">
+                        <div class="reviews-popup-title">Avis Google</div>
+                        ${r.reviews.map(rev => `
+                            <div class="review-item">
+                                <div class="review-header">
+                                    <span class="review-author">${escapeHtml(rev.author)}</span>
+                                    <span class="review-stars">${'★'.repeat(rev.rating)}${'☆'.repeat(5 - rev.rating)}</span>
+                                    <span class="review-time">${escapeHtml(rev.time)}</span>
+                                </div>
+                                ${rev.text ? `<p class="review-text">${escapeHtml(rev.text)}</p>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>` : ''}
             ${r.cuisine ? `<div class="detail-cuisine">${r.cuisine}${priceLevel ? ' · ' + priceLevel : ''}</div>` : (priceLevel ? `<div class="detail-cuisine">${priceLevel}</div>` : '')}
             <div class="detail-info" style="font-style: italic;">${r.address || ''}</div>
             ${r.phone ? `<div class="detail-info">📞 ${r.phone}</div>` : ''}
             ${r.website ? `<div class="detail-info"><a href="${r.website}" target="_blank">Voir le site web</a></div>` : ''}
+            ${r.reservationUrl ? `<div class="detail-info"><a href="${r.reservationUrl}" target="_blank">Réserver</a></div>` : ''}
             ${hoursHtml}
             ${dateFormatted ? `<div class="detail-date">♥ Visité le ${dateFormatted}</div>` : ''}
 
@@ -436,17 +462,13 @@ function showDetailModal(restaurantId) {
 
             <div class="detail-comment-section">
                 <h3>Notre note</h3>
-                <div class="star-rating" id="detail-star-rating">
-                    ${[1,2,3,4,5].map(i => `<span class="star" data-value="${i}">☆</span>`).join('')}
-                </div>
+                ${renderStarRatingHtml('detail-star-rating')}
 
                 <h3 style="margin-top: 18px;">Notre avis</h3>
-                ${r.comment
-                    ? `<div class="detail-comment">${escapeHtml(r.comment)}</div>`
-                    : `<p style="color: var(--text-light); font-style: italic;">Pas encore de commentaire</p>`
-                }
-                <textarea class="detail-comment-edit" id="detail-comment-edit" placeholder="Ajouter ou modifier notre commentaire...">${r.comment || ''}</textarea>
-                <button class="btn-small" onclick="updateComment('${r.id}')">Enregistrer</button>
+                <div class="detail-comment-box">
+                    <textarea class="detail-comment-edit" id="detail-comment-edit" placeholder="Un moment inoubliable...">${r.comment || ''}</textarea>
+                </div>
+                <button class="btn-small" style="margin-top: 12px;" onclick="updateComment('${r.id}')">Enregistrer</button>
             </div>
 
             <hr class="detail-separator">
@@ -471,10 +493,36 @@ function showDetailModal(restaurantId) {
         </div>
     `;
 
+    // Reviews popup toggle
+    const ratingTrigger = document.getElementById('detail-rating-trigger');
+    const reviewsPopup = document.getElementById('reviews-popup');
+    if (ratingTrigger && reviewsPopup) {
+        ratingTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            reviewsPopup.classList.toggle('visible');
+        });
+        // Close when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.detail-rating-wrapper')) {
+                reviewsPopup.classList.remove('visible');
+            }
+        }, { once: false });
+    }
+
+    // Auto-resize textarea
+    const commentEdit = document.getElementById('detail-comment-edit');
+    function autoResize() {
+        commentEdit.style.height = 'auto';
+        commentEdit.style.height = commentEdit.scrollHeight + 'px';
+    }
+    commentEdit.addEventListener('input', autoResize);
+    // Delay to ensure modal is visible before measuring
+    setTimeout(autoResize, 50);
+
     // Star rating in detail
     setupStarRating('detail-star-rating', r.ourRating || 0);
     document.getElementById('detail-star-rating').addEventListener('click', () => {
-        r.ourRating = parseInt(document.getElementById('detail-star-rating').dataset.value || '0');
+        r.ourRating = parseFloat(document.getElementById('detail-star-rating').dataset.value || '0');
         saveRestaurant(r);
         renderRestaurants();
     });
@@ -495,6 +543,7 @@ function showDetailModal(restaurantId) {
     });
 
     modal.classList.remove('hidden');
+    lockBody();
 }
 
 function updateComment(restaurantId) {
@@ -504,7 +553,8 @@ function updateComment(restaurantId) {
     r.comment = textarea.value.trim();
     saveRestaurant(r);
     renderRestaurants();
-    showDetailModal(restaurantId);
+    document.getElementById('detail-modal').classList.add('hidden');
+    unlockBody();
 }
 
 function removePhoto(restaurantId, photoIndex) {
@@ -540,15 +590,18 @@ function setupModals() {
     // Close buttons
     document.getElementById('modal-close').addEventListener('click', () => {
         document.getElementById('detail-modal').classList.add('hidden');
+        unlockBody();
     });
     document.getElementById('add-modal-close').addEventListener('click', () => {
         document.getElementById('add-modal').classList.add('hidden');
+        unlockBody();
     });
 
     // Overlay click
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         overlay.addEventListener('click', () => {
             overlay.parentElement.classList.add('hidden');
+            unlockBody();
         });
     });
 
@@ -557,6 +610,7 @@ function setupModals() {
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
             document.querySelectorAll('.fullscreen-image-overlay').forEach(o => o.remove());
+            unlockBody();
         }
     });
 }
@@ -606,8 +660,12 @@ function renderRestaurants() {
                     <div class="card-address">${r.address || ''}</div>
                     ${r.ourRating ? `<div class="card-our-rating">${renderStarsReadonly(r.ourRating)} <span>Notre note</span></div>` : ''}
                     ${dateFormatted ? `<div class="card-date">♥ ${dateFormatted}</div>` : ''}
-                    ${r.comment ? `<div class="card-comment-preview">"${escapeHtml(r.comment)}"</div>` : ''}
-                    ${photoCount > 0 ? `<div class="card-photos-count">📸 ${photoCount} photo${photoCount > 1 ? 's' : ''}</div>` : ''}
+                    ${r.comment ? `<div class="card-comment-preview">${escapeHtml(r.comment)}</div>` : ''}
+                    ${(r.userPhotos && r.userPhotos.length > 0) ? `
+                        <div class="card-photos-thumbs">
+                            ${r.userPhotos.map((src, i) => `<img src="${src}" alt="Photo ${i + 1}">`).join('')}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -728,41 +786,91 @@ function saveRestaurants() {
     restaurants.forEach(r => saveRestaurant(r));
 }
 
+// ─── Modal Body Lock ───
+
+function lockBody() {
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.documentElement.style.setProperty('--scrollbar-width', scrollbarWidth + 'px');
+    document.body.classList.add('modal-open');
+}
+
+function unlockBody() {
+    document.body.classList.remove('modal-open');
+    document.documentElement.style.setProperty('--scrollbar-width', '0px');
+}
+
 // ─── Star Rating ───
 
 function setupStarRating(containerId, initialValue) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    const stars = container.querySelectorAll('.star');
     const val = initialValue || 0;
     container.dataset.value = val;
-    updateStars(stars, val);
+    displayStarRating(container, val);
 
-    stars.forEach(star => {
-        star.addEventListener('mouseenter', () => {
-            updateStars(stars, parseInt(star.dataset.value));
+    container.querySelectorAll('.star').forEach(star => {
+        const leftZone = star.querySelector('.star-left');
+        const rightZone = star.querySelector('.star-right');
+        const index = parseInt(star.dataset.index);
+
+        leftZone.addEventListener('mouseenter', () => displayStarRating(container, index - 0.5));
+        rightZone.addEventListener('mouseenter', () => displayStarRating(container, index));
+
+        star.addEventListener('mouseleave', () => displayStarRating(container, parseFloat(container.dataset.value || '0')));
+
+        leftZone.addEventListener('click', () => {
+            container.dataset.value = index - 0.5;
+            displayStarRating(container, index - 0.5);
         });
-        star.addEventListener('mouseleave', () => {
-            updateStars(stars, parseInt(container.dataset.value || '0'));
-        });
-        star.addEventListener('click', () => {
-            container.dataset.value = star.dataset.value;
-            updateStars(stars, parseInt(star.dataset.value));
+        rightZone.addEventListener('click', () => {
+            container.dataset.value = index;
+            displayStarRating(container, index);
         });
     });
 }
 
-function updateStars(stars, value) {
-    stars.forEach(star => {
-        const v = parseInt(star.dataset.value);
-        star.textContent = v <= value ? '★' : '☆';
-        star.classList.toggle('active', v <= value);
+function displayStarRating(container, value) {
+    container.querySelectorAll('.star').forEach(star => {
+        const index = parseInt(star.dataset.index);
+        const fill = star.querySelector('.star-fill');
+        if (value >= index) {
+            fill.style.width = '100%';
+        } else if (value >= index - 0.5) {
+            fill.style.width = '50%';
+        } else {
+            fill.style.width = '0';
+        }
     });
+}
+
+function renderStarRatingHtml(containerId) {
+    let html = `<div class="star-rating" id="${containerId}">`;
+    for (let i = 1; i <= 5; i++) {
+        html += `<span class="star" data-index="${i}">
+            <span class="star-display">☆</span>
+            <span class="star-fill">★</span>
+            <span class="star-left"></span>
+            <span class="star-right"></span>
+        </span>`;
+    }
+    html += `</div>`;
+    return html;
 }
 
 function renderStarsReadonly(value) {
     if (!value) return '';
-    return '★'.repeat(value) + '☆'.repeat(5 - value);
+    let html = '<span class="card-stars">';
+    for (let i = 1; i <= 5; i++) {
+        if (value >= i) {
+            html += `<span class="card-star"><span class="card-star-fill" style="width:100%">★</span>☆</span>`;
+        } else if (value >= i - 0.5) {
+            html += `<span class="card-star"><span class="card-star-fill" style="width:50%">★</span>☆</span>`;
+        } else {
+            html += `<span class="card-star">☆</span>`;
+        }
+    }
+    html += '</span>';
+    return html;
 }
 
 // ─── Helpers ───
