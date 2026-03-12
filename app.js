@@ -346,32 +346,74 @@ function showAddModal(place) {
     lockBody();
 }
 
+let pendingUploads = 0;
+
 function handlePhotoFiles(files) {
     Array.from(files).forEach(file => {
         if (!file.type.startsWith('image/')) return;
+        pendingUploads++;
+        updateSaveButton();
+
+        const index = pendingPhotos.length;
+        pendingPhotos.push(null); // placeholder
+        renderPhotoPreviews();
+
         const reader = new FileReader();
+        reader.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                const bar = document.getElementById(`photo-progress-${index}`);
+                if (bar) bar.style.width = pct + '%';
+            }
+        };
         reader.onload = (e) => {
-            pendingPhotos.push(e.target.result);
+            pendingPhotos[index] = e.target.result;
+            pendingUploads--;
+            updateSaveButton();
             renderPhotoPreviews();
         };
         reader.readAsDataURL(file);
     });
 }
 
+function updateSaveButton() {
+    const btn = document.getElementById('btn-save-restaurant');
+    if (!btn) return;
+    if (pendingUploads > 0) {
+        btn.disabled = true;
+        btn.textContent = `Chargement des photos (${pendingUploads})...`;
+    } else {
+        btn.disabled = false;
+        btn.textContent = '♥ Ajouter à nos adresses';
+    }
+}
+
 function renderPhotoPreviews() {
     const container = document.getElementById('photo-previews');
     if (!container) return;
-    container.innerHTML = pendingPhotos.map((src, i) => `
-        <div class="photo-preview-thumb">
-            <img src="${src}" alt="Photo ${i + 1}">
-            <button class="remove-photo" onclick="removePendingPhoto(${i})">✕</button>
-        </div>
-    `).join('');
+    container.innerHTML = pendingPhotos.map((src, i) => {
+        const loading = src === null;
+        return `
+            <div class="photo-preview-thumb">
+                ${loading
+                    ? `<div class="photo-placeholder-loading"></div>`
+                    : `<img src="${src}" alt="Photo ${i + 1}">`
+                }
+                <div class="photo-progress-bar"><div class="photo-progress-fill" id="photo-progress-${i}" style="width:${loading ? '0' : '100'}%"></div></div>
+                ${!loading ? `<button class="remove-photo" onclick="removePendingPhoto(${i})">✕</button>` : ''}
+            </div>
+        `;
+    }).join('');
 }
 
 function removePendingPhoto(index) {
     pendingPhotos.splice(index, 1);
     renderPhotoPreviews();
+}
+
+function resetPendingState() {
+    pendingPhotos = [];
+    pendingUploads = 0;
 }
 
 function saveNewRestaurant(modal) {
@@ -386,7 +428,7 @@ function saveNewRestaurant(modal) {
         comment: comment,
         date: date,
         ourRating: ourRating,
-        userPhotos: [...pendingPhotos],
+        userPhotos: pendingPhotos.filter(p => p !== null),
         addedAt: new Date().toISOString(),
     };
 
@@ -398,7 +440,7 @@ function saveNewRestaurant(modal) {
 
     modal.classList.add('hidden');
     unlockBody();
-    pendingPhotos = [];
+    resetPendingState();
 }
 
 // ─── Detail Modal ───
@@ -529,14 +571,31 @@ function showDetailModal(restaurantId) {
 
     // Detail photo upload
     document.getElementById('detail-photo-input').addEventListener('change', (e) => {
+        const grid = document.getElementById('detail-photos-grid');
         Array.from(e.target.files).forEach(file => {
             if (!file.type.startsWith('image/')) return;
+
+            // Add loading placeholder
+            const placeholder = document.createElement('div');
+            placeholder.className = 'detail-photo';
+            placeholder.innerHTML = `
+                <div class="photo-placeholder-loading" style="width:100%;height:100%;"></div>
+                <div class="photo-progress-bar"><div class="photo-progress-fill" style="width:0%"></div></div>
+            `;
+            grid.appendChild(placeholder);
+
             const reader = new FileReader();
+            reader.onprogress = (ev) => {
+                if (ev.lengthComputable) {
+                    const bar = placeholder.querySelector('.photo-progress-fill');
+                    if (bar) bar.style.width = Math.round((ev.loaded / ev.total) * 100) + '%';
+                }
+            };
             reader.onload = (ev) => {
                 if (!r.userPhotos) r.userPhotos = [];
                 r.userPhotos.push(ev.target.result);
                 saveRestaurant(r);
-                showDetailModal(r.id); // refresh
+                showDetailModal(r.id);
             };
             reader.readAsDataURL(file);
         });
