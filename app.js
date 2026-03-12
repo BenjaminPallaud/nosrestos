@@ -167,7 +167,6 @@ function searchPlaces(query) {
     const request = {
         input: query,
         types: ['restaurant', 'cafe', 'bar', 'food'],
-        componentRestrictions: { country: 'fr' },
     };
 
     // If map has a center, use location bias
@@ -361,16 +360,18 @@ function handlePhotoFiles(files) {
         const reader = new FileReader();
         reader.onprogress = (e) => {
             if (e.lengthComputable) {
-                const pct = Math.round((e.loaded / e.total) * 100);
+                const pct = Math.round((e.loaded / e.total) * 70);
                 const bar = document.getElementById(`photo-progress-${index}`);
                 if (bar) bar.style.width = pct + '%';
             }
         };
         reader.onload = (e) => {
-            pendingPhotos[index] = e.target.result;
-            pendingUploads--;
-            updateSaveButton();
-            renderPhotoPreviews();
+            resizeImage(e.target.result, 800, (resized) => {
+                pendingPhotos[index] = resized;
+                pendingUploads--;
+                updateSaveButton();
+                renderPhotoPreviews();
+            });
         };
         reader.readAsDataURL(file);
     });
@@ -433,7 +434,18 @@ function saveNewRestaurant(modal) {
     };
 
     restaurants.push(restaurant);
-    saveRestaurant(restaurant);
+
+    // Convert Google photo URL to base64 for persistence
+    if (restaurant.photo && restaurant.photo.startsWith('http')) {
+        convertImageToBase64(restaurant.photo, (base64) => {
+            if (base64) restaurant.photo = base64;
+            saveRestaurant(restaurant);
+            renderRestaurants();
+        });
+    } else {
+        saveRestaurant(restaurant);
+    }
+
     renderRestaurants();
     updateMapMarkers();
     fitMapToMarkers();
@@ -441,6 +453,24 @@ function saveNewRestaurant(modal) {
     modal.classList.add('hidden');
     unlockBody();
     resetPendingState();
+}
+
+function convertImageToBase64(url, callback) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxSize = 600;
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > maxSize) { h = h * maxSize / w; w = maxSize; } }
+        else { if (h > maxSize) { w = w * maxSize / h; h = maxSize; } }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        callback(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => callback(null);
+    img.src = url;
 }
 
 // ─── Detail Modal ───
@@ -543,12 +573,22 @@ function showDetailModal(restaurantId) {
             e.stopPropagation();
             reviewsPopup.classList.toggle('visible');
         });
-        // Close when clicking outside
+        // Close when clicking outside (using AbortController to clean up)
+        const popupAc = new AbortController();
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.detail-rating-wrapper')) {
                 reviewsPopup.classList.remove('visible');
             }
-        }, { once: false });
+        }, { signal: popupAc.signal });
+        // Clean up when modal closes
+        const modalEl = document.getElementById('detail-modal');
+        const observer = new MutationObserver(() => {
+            if (modalEl.classList.contains('hidden')) {
+                popupAc.abort();
+                observer.disconnect();
+            }
+        });
+        observer.observe(modalEl, { attributes: true, attributeFilter: ['class'] });
     }
 
     // Auto-resize textarea
@@ -572,30 +612,40 @@ function showDetailModal(restaurantId) {
     // Detail photo upload
     document.getElementById('detail-photo-input').addEventListener('change', (e) => {
         const grid = document.getElementById('detail-photos-grid');
-        Array.from(e.target.files).forEach(file => {
-            if (!file.type.startsWith('image/')) return;
+        const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+        if (files.length === 0) return;
 
-            // Add loading placeholder
+        let loaded = 0;
+        const placeholders = [];
+
+        files.forEach((file, idx) => {
             const placeholder = document.createElement('div');
             placeholder.className = 'detail-photo';
             placeholder.innerHTML = `
                 <div class="photo-placeholder-loading" style="width:100%;height:100%;"></div>
-                <div class="photo-progress-bar"><div class="photo-progress-fill" style="width:0%"></div></div>
+                <div class="photo-progress-bar"><div class="photo-progress-fill" id="detail-prog-${idx}" style="width:0%"></div></div>
             `;
             grid.appendChild(placeholder);
+            placeholders.push(placeholder);
 
             const reader = new FileReader();
             reader.onprogress = (ev) => {
                 if (ev.lengthComputable) {
-                    const bar = placeholder.querySelector('.photo-progress-fill');
+                    const bar = document.getElementById(`detail-prog-${idx}`);
                     if (bar) bar.style.width = Math.round((ev.loaded / ev.total) * 100) + '%';
                 }
             };
             reader.onload = (ev) => {
-                if (!r.userPhotos) r.userPhotos = [];
-                r.userPhotos.push(ev.target.result);
-                saveRestaurant(r);
-                showDetailModal(r.id);
+                resizeImage(ev.target.result, 800, (resized) => {
+                    if (!r.userPhotos) r.userPhotos = [];
+                    r.userPhotos.push(resized);
+                    loaded++;
+                    if (loaded === files.length) {
+                        saveRestaurant(r);
+                        renderRestaurants();
+                        showDetailModal(r.id);
+                    }
+                });
             };
             reader.readAsDataURL(file);
         });
@@ -840,10 +890,7 @@ async function saveCouplePhoto(photoData) {
     }
 }
 
-function saveRestaurants() {
-    // Batch save all (used for comment/photo updates)
-    restaurants.forEach(r => saveRestaurant(r));
-}
+
 
 // ─── Modal Body Lock ───
 
