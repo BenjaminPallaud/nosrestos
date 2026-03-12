@@ -685,7 +685,6 @@ function showFullscreenImage(src) {
 
 function deleteRestaurant(id, e) {
     e.stopPropagation();
-    if (!confirm('Retirer ce restaurant de notre liste ?')) return;
     restaurants = restaurants.filter(r => r.id !== id);
     deleteRestaurantFromDb(id);
     renderRestaurants();

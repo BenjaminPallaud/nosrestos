@@ -104,11 +104,17 @@ body::before {
     letter-spacing: 0.5em;
 }
 
+.medallion-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
 .top-ornament {
-    position: absolute;
-    top: 32px;
-    left: calc(50% + 30px);
+    position: relative;
     z-index: 2;
+    margin-bottom: -6px;
 }
 
 .tiara-icon {
@@ -145,7 +151,7 @@ body::before {
 }
 
 .header-titles {
-    text-align: left;
+    text-align: center;
 }
 
 /* ─── COUPLE MEDALLION ─── */
